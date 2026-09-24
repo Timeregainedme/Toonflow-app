@@ -54,8 +54,8 @@ async function uploadMedia(context: ProviderContext, apiKey: string, input: Medi
   return result.url;
 }
 
-/** 轮询 PIX 异步任务；completed 后读 output_url，failed 时抛出错误原因。 */
-async function pollTask(context: ProviderContext, apiKey: string, taskId: string, signal: AbortSignal): Promise<string> {
+/** 轮询 PIX 异步任务；completed 后读 output_url 与可选的 cost_rmb/balance_rmb，failed 时抛出错误原因。 */
+async function pollTask(context: ProviderContext, apiKey: string, taskId: string, signal: AbortSignal): Promise<{ url: string; usage?: MediaUsage }> {
   while (true) {
     const response = await context.tool.fetch(`${apiUrl}/v1/tasks/${taskId}`, {
       headers: { Authorization: `Bearer ${apiKey}` },
@@ -66,7 +66,9 @@ async function pollTask(context: ProviderContext, apiKey: string, taskId: string
     if (data.status === "failed") throw new Error(typeof data.error === "string" ? data.error : "生成失败");
     if (data.is_final === true) {
       if (typeof data.output_url !== "string" || !data.output_url) throw new Error("未返回生成结果");
-      return data.output_url;
+      const cost = typeof data.cost_rmb === "number" ? { amount: data.cost_rmb, currency: "CNY" } : undefined;
+      const balanceAfter = typeof data.balance_rmb === "number" ? { amount: data.balance_rmb, currency: "CNY" } : undefined;
+      return { url: data.output_url, ...(cost || balanceAfter ? { usage: { cost, balanceAfter } } : {}) };
     }
     await wait(signal, 6000);
   }
@@ -136,8 +138,8 @@ export default {
     const taskId = data.task_id;
     if (typeof taskId !== "string" || !taskId) throw new Error("未返回任务ID");
 
-    const url = await pollTask(this, apiKey, taskId, signal);
-    return [{ mediaType: "image", type: "url", url }];
+    const { url, usage } = await pollTask(this, apiKey, taskId, signal);
+    return [{ mediaType: "image", type: "url", url, ...(usage ? { usage } : {}) }];
   },
   async generateVideo(request: VideoRequest): Promise<MediaAsset[]> {
     const apiKey = this.config.apiKey?.trim();
@@ -201,7 +203,7 @@ export default {
     const taskId = taskData.task_id;
     if (typeof taskId !== "string" || !taskId) throw new Error("未返回任务ID");
 
-    const url = await pollTask(this, apiKey, taskId, signal);
-    return [{ mediaType: "video", type: "url", url }];
+    const { url, usage } = await pollTask(this, apiKey, taskId, signal);
+    return [{ mediaType: "video", type: "url", url, ...(usage ? { usage } : {}) }];
   },
 } satisfies ProviderDefinition<typeof rules>;

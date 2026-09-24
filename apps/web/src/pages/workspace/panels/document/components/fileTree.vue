@@ -15,7 +15,7 @@
     <div class="treeContent">
       <el-tree v-if="directory" :key="treeVersion" lazy highlightCurrent :load="loadChildren" :props="treeProps" nodeKey="key" emptyText="暂无文件" @node-click="selectNode">
         <template #default="{ node, data }">
-          <span class="fileItem" :title="data.name">
+          <span class="fileItem" :title="data.name" @contextmenu.prevent="openHistory(data)">
             <icon-layout-dashboard v-if="data.type === 'canvas'" :size="16" aria-hidden="true" />
             <icon-file-text v-else-if="data.type === 'node'" :size="16" aria-hidden="true" />
             <icon-folder-open v-else-if="data.type === 'directory' && node.expanded" :size="16" aria-hidden="true" />
@@ -26,6 +26,7 @@
         </template>
       </el-tree>
     </div>
+    <historyDialog v-if="directory && historyPath" v-model="historyVisible" :directory="directory" :path="historyPath" @restored="refreshTree" />
   </aside>
 </template>
 
@@ -37,6 +38,7 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import { IconFile, IconFilePlus, IconFileText, IconFolder, IconFolderOpen, IconLayoutDashboard, IconRefresh } from "@tabler/icons-vue";
 import useWorkspaceFiles from "@/lib/workspaceFiles";
 import { isCanvasFile } from "@/pages/workspace/canvasFile";
+import historyDialog from "@/components/workspace/historyDialog.vue";
 
 type CanvasNodeSelection = { canvasPath: string; nodeId: string; label: string };
 type MarkdownFileSelection = { filePath: string; label: string };
@@ -97,6 +99,15 @@ function selectNode(item: FileTreeItem) {
 function refreshTree() {
   treeVersion.value++;
   loadError.value = "";
+}
+
+const historyVisible = ref(false);
+const historyPath = ref("");
+
+function openHistory(item: FileTreeItem) {
+  if (item.type !== "file" && item.type !== "canvas") return;
+  historyPath.value = item.path;
+  historyVisible.value = true;
 }
 
 const creating = ref(false);

@@ -14,5 +14,6 @@ export default router.post("/", validateFields({ directory: z.string().min(1).ma
   const release = u.workspaceFile.lockWorkspaceFiles([source.path, target.path]);
   try { await u.workspaceFile.renameWorkspaceFile(source.path, target.path); }
   finally { release(); }
+  await u.fileHistory.moveFileHistory(source.directory, source.path, target.path);
   res.json(success());
 });

@@ -21,6 +21,17 @@
             <icon-folders :size="17" />
           </el-button>
         </el-tooltip>
+        <el-tooltip :showArrow="false" :content="charactersVisible ? '关闭角色库' : '打开角色库'" placement="top" :hideAfter="0" :enterable="false" :triggerKeys="[]">
+          <el-button
+            class="toolButton"
+            text
+            :type="charactersVisible ? 'primary' : 'default'"
+            :aria-pressed="charactersVisible"
+            aria-label="角色库"
+            @click="charactersVisible = !charactersVisible">
+            <icon-users :size="17" />
+          </el-button>
+        </el-tooltip>
         <!-- trigger 用 contextmenu 是为了让整理按钮只由 arrangeNodes 控制显隐，同时仍保留点击外部自动关闭 -->
         <el-tooltip :showArrow="false" content="整理画布" placement="top" :hideAfter="0" :enterable="false" :triggerKeys="[]" :disabled="undoPopoverVisible">
           <span class="toolTrigger">
@@ -184,6 +195,7 @@ const props = defineProps<{
 const snapEnabled = defineModel<boolean>("snapEnabled", { required: true });
 const showEdges = defineModel<boolean>("showEdges", { required: true });
 const assetsVisible = defineModel<boolean>("assetsVisible", { default: false });
+const charactersVisible = defineModel<boolean>("charactersVisible", { default: false });
 const showMap = ref(false);
 const zoomMenuVisible = ref(false);
 const helpVisible = ref(false);

@@ -7,7 +7,8 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import type { CanvasContext, QuestionContext, ToolContext } from "@toonflow/tools-scaffold/runtime";
 import conf from "@/utils/conf";
-import { isWithin, resolveWorkspacePath, writeWorkspaceFile, lockWorkspaceFiles } from "@/utils/workspace/files";
+import { isWithin, resolveWorkspacePath, lockWorkspaceFiles } from "@/utils/workspace/files";
+import { writeWorkspaceFileWithHistory } from "@/utils/workspace/history";
 import { listTools, loadTool, validateToolConfig } from "@/utils/plugins/tools";
 import { createSkillContext } from "@/agent/skills";
 
@@ -21,7 +22,7 @@ export function createAgentToolContext(cwd: string, config: Record<string, unkno
   const writeFile = async (path: string, content: string) => {
     const target = await resolvePath(path);
     const release = lockWorkspaceFiles([target]);
-    try { await writeWorkspaceFile(target, content); }
+    try { await writeWorkspaceFileWithHistory(cwd, target, content); }
     finally { release(); }
   };
   return {

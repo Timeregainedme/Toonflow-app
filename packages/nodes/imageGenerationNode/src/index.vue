@@ -26,8 +26,10 @@
         <icon-photo-ai :size="48" stroke="1.25" aria-hidden="true" />
       </div>
     </div>
+    <div v-if="lastGenerationCharacterNames" class="generationCaption">由角色：{{ lastGenerationCharacterNames }} 生成</div>
     <template #bottom>
       <el-card class="promptCard" shadow="never" :bodyStyle="{ padding: '14px 16px 12px' }">
+        <characterPicker v-model="data.characterIds" :characters="characters" :disabled="generating || deleting" />
         <referenceItem
           v-if="refList.length"
           v-model="refList"
@@ -83,9 +85,13 @@
 import { computed, nextTick, onMounted, onScopeDispose, ref, watch } from "vue";
 import { ElButton, ElCard, ElSelect, ElOption, ElOptionGroup, ElMessage, ElLoading, ElImageViewer } from "element-plus";
 import { IconPhotoAi, IconSparkles, IconArrowUp, IconPlayerStop, IconTransfer } from "@tabler/icons-vue";
-import { groupNodeModels, nodeSkeleton, nodeTools, useNode, useNodeGeneration, useNodeReferences, z, type NodeMediaModel, type NodeHandle } from "@toonflow/nodes-scaffold/runtime";
+import {
+  groupNodeModels, nodeSkeleton, nodeTools, selectCharacterReferences, useNode, useNodeCharacters, useNodeGeneration, useNodeReferences, z,
+  type NodeCharacter, type NodeMediaModel, type NodeHandle,
+} from "@toonflow/nodes-scaffold/runtime";
 import promptInput from "@toonflow/nodes-scaffold/promptInput";
 import referenceItem from "@toonflow/nodes-scaffold/referenceItem";
+import characterPicker from "@toonflow/nodes-scaffold/characterPicker";
 import generationSettings from "./components/generationSettings.vue";
 
 defineOptions({
@@ -101,15 +107,27 @@ const { id, node, nodeProps, nodeEvent, outputs, files, ai, updateNodeInternals 
   label: "图片生成",
 });
 type PromptModel = NonNullable<InstanceType<typeof promptInput>["$props"]["modelValue"]>;
-const data = computed(() => node.data as { prompt: string; promptModel: PromptModel; model: string; size: string; ratio: string });
+const data = computed(() => node.data as {
+  prompt: string; promptModel: PromptModel; model: string; size: string; ratio: string;
+  characterIds: string[]; lastGenerationCharacterIds: string[];
+});
 data.value.prompt ??= "";
 data.value.promptModel ??= [];
 data.value.model ??= "";
 data.value.size ??= "";
 data.value.ratio ??= "16:9";
+data.value.characterIds ??= [];
+data.value.lastGenerationCharacterIds ??= [];
 const { refList, referenceMentions, setReferencePreview, removeReference } = useNodeReferences();
 const models = ref<NodeMediaModel[]>([]);
 const modelsLoading = ref(false);
+const characters = ref<NodeCharacter[]>([]);
+const nodeCharacters = useNodeCharacters();
+// ACT: 图片模型暂未声明参考图数量上限，先用保守默认值；模型能声明该上限后改为读取声明值。
+const defaultImageReferenceCap = 6;
+const lastGenerationCharacterNames = computed(() => data.value.lastGenerationCharacterIds
+  .map(id => characters.value.find(item => item.id === id)?.name ?? "角色已删除")
+  .join("、"));
 const uploading = ref(false);
 const fileInput = ref<HTMLInputElement>();
 let disposed = false;
@@ -152,6 +170,7 @@ const previewUrl = files.useFileUrl(
 );
 
 onMounted(() => loadModels().catch((error) => showError(error, "模型读取失败")));
+onMounted(() => loadCharacters().catch(() => {}));
 onScopeDispose(() => {
   disposed = true;
   generationController?.abort();
@@ -199,6 +218,10 @@ function loadModels() {
   return modelsRequest;
 }
 
+function loadCharacters() {
+  return files.getWorkspaceFiles().list().then(({ directory }) => nodeCharacters.list(directory)).then(items => { characters.value = items; });
+}
+
 async function startGeneration() {
   const choice = selectedModel.value;
   if (generating.value) throw new Error("图片正在生成，请等待完成");
@@ -207,6 +230,8 @@ async function startGeneration() {
   if (!choice) throw new Error("请先选择图片模型");
   if (!generationPrompt.value) throw new Error("请输入生成提示词");
   if (refList.value.some(item => item.value === undefined)) throw new Error("引用节点暂无内容，请先补充引用内容");
+  const refImages = refList.value.flatMap((item) => (item.dataType === "IMAGE" && item.value ? [{ path: item.value.url, mimeType: item.value.mimeType }] : []));
+  const { references: characterImages, usedCharacterIds } = selectCharacterReferences(characters.value, data.value.characterIds, refImages.length, defaultImageReferenceCap);
   const workspace = files.getWorkspaceFiles();
   const controller = new AbortController();
   const input = {
@@ -216,7 +241,7 @@ async function startGeneration() {
     size: data.value.size,
     ratio: data.value.ratio,
     outputDirectory: `assets/${id}`,
-    images: refList.value.flatMap((item) => (item.dataType === "IMAGE" && item.value ? [{ path: item.value.url, mimeType: item.value.mimeType }] : [])),
+    images: [...characterImages.map(({ path, mimeType }) => ({ path, mimeType })), ...refImages],
   };
   generationController = controller;
   // ACT: 工具立即返回，任务由节点持有，停止或卸载时取消。
@@ -230,6 +255,7 @@ async function startGeneration() {
       controller.signal.throwIfAborted();
       if (!result) throw new Error("供应商未返回图片");
       outputs.value.image = { dataType: "IMAGE", value: { url: result.path, mimeType: result.mimeType } };
+      data.value.lastGenerationCharacterIds = usedCharacterIds;
     }))
     .catch((error) => showError(error, "图片生成失败"))
     .finally(() => {
@@ -371,6 +397,15 @@ nodeTools.register({
     border-radius: var(--el-border-radius-base);
   }
 
+}
+
+.generationCaption {
+  margin-top: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
 }
 
 .promptCard {

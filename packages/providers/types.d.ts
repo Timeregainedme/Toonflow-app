@@ -53,7 +53,13 @@ type MediaInput =
   | { type: "base64"; data: string; mimeType: string }
   | { type: "binary"; data: Uint8Array; mimeType: string };
 
-type MediaAsset = MediaInput & { mediaType: "image" | "video" | "audio" };
+/** 供应商愿意透露的费用/余额信息；结构化字段，不是原始平台响应透传。 */
+interface MediaUsage {
+  cost?: { amount: number; currency: string };
+  balanceAfter?: { amount: number; currency: string };
+}
+
+type MediaAsset = MediaInput & { mediaType: "image" | "video" | "audio"; usage?: MediaUsage };
 
 interface AudioConvertOptions {
   format: "wav" | "mp3";

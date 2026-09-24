@@ -10,7 +10,8 @@ import conf from "@/utils/conf";
 import { callControl, getConnection, listConnections } from "@/utils/mcp/control";
 import { appOperations, runAppOperation } from "@/utils/mcp/operations";
 import { listTools } from "@/utils/plugins/tools";
-import { isWithin, lockWorkspaceFiles, protectWorkspaceRoot, renameWorkspaceFile, resolveWorkspacePath, writeWorkspaceFile } from "@/utils/workspace/files";
+import { isWithin, lockWorkspaceFiles, protectWorkspaceRoot, renameWorkspaceFile, resolveWorkspacePath } from "@/utils/workspace/files";
+import { writeWorkspaceFileWithHistory } from "@/utils/workspace/history";
 
 const targetSchema = z.strictObject({ connectionId: z.uuid().optional(), directory: z.string().min(1).max(4096).optional(), canvasId: z.string().min(1).max(256).optional() });
 const requestSchema = z.strictObject({ target: targetSchema.optional(), args: z.record(z.string(), z.unknown()) });
@@ -149,7 +150,7 @@ export async function getMcpTools(): Promise<McpTool[]> {
     const { directory } = await resolveTarget(target);
     const source = await resolveWorkspacePath(directory!, args.path);
     signal.throwIfAborted();
-    if (args.action === "list") return (await readdir(source.path, { withFileTypes: true })).filter(item => item.isFile() || item.isDirectory()).map(item => ({ name: item.name, type: item.isDirectory() ? "directory" : "file" }));
+    if (args.action === "list") return (await readdir(source.path, { withFileTypes: true })).filter(item => (item.isFile() || item.isDirectory()) && item.name !== ".toonflow").map(item => ({ name: item.name, type: item.isDirectory() ? "directory" : "file" }));
     if (args.action === "readBinary") {
       const info = await stat(source.path);
       if (!info.isFile() || info.size > 20 * 1024 * 1024) throw new Error("文件必须是不超过20MB的普通文件");
@@ -166,7 +167,7 @@ export async function getMcpTools(): Promise<McpTool[]> {
         if (args.base64 === undefined) throw new Error("写入二进制文件需要 base64");
         const bytes = Buffer.from(args.base64, "base64");
         if (bytes.length > 20 * 1024 * 1024) throw new Error("文件不能超过20MB");
-        await writeWorkspaceFile(source.path, bytes, args.exclusive);
+        await writeWorkspaceFileWithHistory(directory!, source.path, bytes, args.exclusive);
       } else if (args.action === "mkdir") await mkdir(source.path);
       else if (destination) await renameWorkspaceFile(source.path, destination.path);
       else if ((await lstat(source.path)).isDirectory() && !args.recursive) await rmdir(source.path);

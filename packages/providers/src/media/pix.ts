@@ -74,8 +74,6 @@ async function pollTask(context: ProviderContext, apiKey: string, taskId: string
   }
 }
 
-const imageRatios = ["1:1", "auto", "3:2", "2:3", "4:3", "3:4", "5:4", "4:5", "16:9", "9:16", "21:9", "9:21"];
-
 export default {
   id: "pix",
   label: "PIX",
@@ -97,7 +95,7 @@ export default {
       type: "image",
       mode: ["text", "singleImage", "multiReference"],
       imageSizes: ["1K", "2K", "4K"],
-      imageRatios,
+      imageRatios: ["1:1", "auto", "3:2", "2:3", "4:3", "3:4", "5:4", "4:5", "16:9", "9:16", "21:9", "9:21"],
     },
     {
       id: "gpt-image-2.5-sunburst",
@@ -105,7 +103,7 @@ export default {
       type: "image",
       mode: ["text", "singleImage", "multiReference"],
       imageSizes: ["1K", "2K", "4K"],
-      imageRatios,
+      imageRatios: ["1:1", "auto", "3:2", "2:3", "4:3", "3:4", "5:4", "4:5", "16:9", "9:16", "21:9", "9:21"],
     },
   ] satisfies ProviderModel[],
   async generateImage(request: ImageRequest): Promise<MediaAsset[]> {

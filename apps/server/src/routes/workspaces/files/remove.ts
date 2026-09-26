@@ -15,5 +15,6 @@ export default router.delete("/", validateFields({ directory: z.string().min(1).
     if ((await lstat(path)).isDirectory() && req.body.recursive !== true) await rmdir(path);
     else await rm(path, { recursive: req.body.recursive === true });
   } finally { release(); }
+  await u.fileHistory.removeFileHistoryTree(directory, path);
   res.json(success());
 });

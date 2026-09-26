@@ -14,7 +14,7 @@ export default router.get("/", validateFields({ directory: z.string().min(1).max
   res.set("Cache-Control", "no-store").json(success({
     directory,
     empty: entries.length === 0,
-    entries: entries.filter(entry => entry.isFile() || entry.isDirectory()).map(entry => ({
+    entries: entries.filter(entry => (entry.isFile() || entry.isDirectory()) && entry.name !== ".toonflow").map(entry => ({
       name: entry.name, path: relative(directory, join(path, entry.name)).split(sep).join("/"), type: entry.isDirectory() ? "directory" : "file",
     })).sort((a, b) => a.name.localeCompare(b.name, "zh-CN", { numeric: true })),
   }));

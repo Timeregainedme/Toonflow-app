@@ -110,6 +110,17 @@ export default function useWorkspaceFiles(directory?: MaybeRefOrGetter<string | 
     await client.post("/mkdir", { directory: getDirectory(), path });
   }
 
+  async function listHistory(path: string) {
+    const { data } = await client.get<{ data: { versions: { id: string; timestamp: number; size: number }[] } }>("/history/list", { params: { directory: getDirectory(), path } });
+    return data.data.versions;
+  }
+
+  async function restoreHistory(path: string, versionId: string) {
+    const directory = getDirectory();
+    await client.post("/history/restore", { directory, path, versionId });
+    invalidateUrls(directory, path);
+  }
+
   // ACT: 当前目录逐次读取；跨 await 或防抖的操作传入目录字符串，固定本次目标。
-  return { list, read, acquireUrl, readText, readJson, write, writeJson, rename, remove, mkdir };
+  return { list, read, acquireUrl, readText, readJson, write, writeJson, rename, remove, mkdir, listHistory, restoreHistory };
 }

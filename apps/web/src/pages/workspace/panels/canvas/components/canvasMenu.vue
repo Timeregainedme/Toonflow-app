@@ -32,9 +32,11 @@
             <el-text v-if="renameError" type="danger" role="alert">{{ renameError }}</el-text>
           </div>
         </el-popover>
+        <el-button text size="small" :icon="IconHistory" :disabled="busy || !directory || !activeCanvasId" aria-label="画布历史版本" title="历史版本" @click="historyVisible = true" />
       </div>
     </el-card>
     <div class="menuExtension"><slot /></div>
+    <historyDialog v-if="directory && activeCanvasId" v-model="historyVisible" :directory="directory" :path="activeCanvasId" @restored="handleHistoryRestored" />
   </panel>
 </template>
 
@@ -43,10 +45,11 @@ import axios from "axios";
 import { computed, inject, nextTick, ref, shallowRef, watch, type ShallowRef } from "vue";
 import { Panel, useVueFlow, type FlowExportObject } from "@vue-flow/core";
 import { ElMessage, ElMessageBox, type InputInstance } from "element-plus";
-import { IconEdit, IconCheck, IconChevronDown, IconPlus, IconTrash } from "@tabler/icons-vue";
+import { IconEdit, IconCheck, IconChevronDown, IconHistory, IconPlus, IconTrash } from "@tabler/icons-vue";
 import { useWorkspaceStore } from "@/stores/workspace";
 import useWorkspaceFiles from "@/lib/workspaceFiles";
 import { getCanvasAssetDirectories, isCanvasFile } from "@/pages/workspace/canvasFile";
+import historyDialog from "@/components/workspace/historyDialog.vue";
 
 const props = defineProps<{
   directory?: string;
@@ -85,6 +88,7 @@ const newCanvasId = ref<string | null>(null);
 const nameInputs = ref<InputInstance[]>([]);
 const canvasName = ref("");
 const renameError = ref("");
+const historyVisible = ref(false);
 const { toObject, setNodes, setEdges, setViewport } = useVueFlow();
 
 watch(() => props.directory, async (directory, _previous, onCleanup) => {
@@ -401,6 +405,23 @@ async function saveCanvas(event?: Event) {
       renameError.value = errorMessage(err, "重命名画布失败");
       canvasListVisible.value = true;
     }
+  } finally {
+    if (props.directory === directory) busy.value = false;
+  }
+}
+
+async function handleHistoryRestored() {
+  const directory = props.directory;
+  const id = activeCanvasId.value;
+  if (!directory || !id || busy.value) return;
+  const canvas = canvases.value.find(item => item.id === id);
+  if (canvas) canvas.flow = undefined;
+  busy.value = true;
+  activeCanvasId.value = "";
+  try {
+    await applyCanvas(id, directory);
+  } catch (err) {
+    if (props.directory === directory) ElMessage.error(errorMessage(err, "重新加载画布失败"));
   } finally {
     if (props.directory === directory) busy.value = false;
   }

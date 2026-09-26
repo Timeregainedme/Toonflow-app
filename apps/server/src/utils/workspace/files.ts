@@ -44,7 +44,7 @@ export async function resolveWorkspaceFile(req: Request, directory: string, path
 }
 
 export async function resolveWorkspacePath(root: string, path: string, allowMissingParents = false) {
-  if (isAbsolute(path) || path.split(/[\\/]/).some(part => part === ".." || /[<>:"|?*\x00-\x1f]/.test(part)
+  if (isAbsolute(path) || path.split(/[\\/]/).some(part => part === ".." || part === ".toonflow" || /[<>:"|?*\x00-\x1f]/.test(part)
     || (process.platform === "win32" && part !== "." && (/[. ]$/.test(part) || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(part))))) {
     throw Object.assign(new Error("文件路径无效"), { status: 400 });
   }

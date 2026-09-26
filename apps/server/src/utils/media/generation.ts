@@ -5,6 +5,7 @@ import type { GeneratedMedia, MediaGenerationRequest, MediaModel, MediaReference
 import conf from "@/utils/conf";
 import { getMediaProvider, listMediaProviders, loadMediaProviderSource } from "@/utils/media/provider";
 import { lockWorkspaceFiles, resolveWorkspacePath, writeWorkspaceFile } from "@/utils/workspace/files";
+import { recordUsage } from "@/utils/workspace/usage";
 
 const maxMediaSize = 100 * 1024 * 1024;
 const mediaExtensions: Record<string, string> = {
@@ -103,6 +104,21 @@ async function downloadAsset(url: string, signal?: AbortSignal) {
   return { bytes: Buffer.concat(chunks, size), mimeType: response.headers.get("content-type") ?? "" };
 }
 
+/** 合并多个资源各自可能带的 usage；同币种 cost 求和，混合币种退化为只记第一条，balanceAfter 取最后一条。 */
+function mergeUsage(assets: MediaAsset[]) {
+  let cost: { amount: number; currency: string } | undefined;
+  let balanceAfter: { amount: number; currency: string } | undefined;
+  for (const asset of assets) {
+    const assetCost = asset.usage?.cost;
+    if (assetCost) {
+      if (!cost) cost = { ...assetCost };
+      else if (cost.currency === assetCost.currency) cost.amount += assetCost.amount;
+    }
+    if (asset.usage?.balanceAfter) balanceAfter = asset.usage.balanceAfter;
+  }
+  return { cost, balanceAfter };
+}
+
 async function assetBytes(asset: MediaAsset, mediaType: "image" | "video" | "audio", signal?: AbortSignal) {
   if (!asset || asset.mediaType !== mediaType) invalid("供应商返回的媒体类型不正确");
   let bytes: Uint8Array;
@@ -149,22 +165,38 @@ export async function generateMedia(
   const references = async (items: MediaReference[] | undefined, type: string) => items ? Promise.all(items.map(item => readReference(directory, item, type, signal))) : undefined;
   const images = await references(request.images, "image");
   signal?.throwIfAborted();
-  const assets = mediaType === "audio"
-    ? await provider.generateAudio!({
-      model: request.modelId, text: request.prompt, audios: await references(request.audios, "audio"),
-      voice: request.voice, speed: request.speed, volume: request.volume, format: request.format, sampleRate: request.sampleRate,
-    })
-    : mediaType === "image"
-    ? await provider.generateImage!({ model: request.modelId, prompt: request.prompt, images, ratio: request.ratio, size: request.size })
-    : await provider.generateVideo!({
-      model: request.modelId, prompt: request.prompt, images,
-      videos: await references(request.videos, "video"), audios: await references(request.audios, "audio"),
-      firstFrame: request.firstFrame ? await readReference(directory, request.firstFrame, "image", signal) : undefined,
-      lastFrame: request.lastFrame ? await readReference(directory, request.lastFrame, "image", signal) : undefined,
-      ratio: request.ratio, resolution: request.resolution, duration: request.duration,
-      generateAudio: request.generateAudio, mode: request.mode,
-    });
+  const usageBase = { providerId: providerInfo.id, providerLabel: providerInfo.label, modelId: model.id, modelLabel: model.label, mediaType };
+  const generationStart = Date.now();
+  let assets: MediaAsset[];
+  try {
+    assets = await (mediaType === "audio"
+      ? provider.generateAudio!({
+        model: request.modelId, text: request.prompt, audios: await references(request.audios, "audio"),
+        voice: request.voice, speed: request.speed, volume: request.volume, format: request.format, sampleRate: request.sampleRate,
+      })
+      : mediaType === "image"
+      ? provider.generateImage!({ model: request.modelId, prompt: request.prompt, images, ratio: request.ratio, size: request.size })
+      : provider.generateVideo!({
+        model: request.modelId, prompt: request.prompt, images,
+        videos: await references(request.videos, "video"), audios: await references(request.audios, "audio"),
+        firstFrame: request.firstFrame ? await readReference(directory, request.firstFrame, "image", signal) : undefined,
+        lastFrame: request.lastFrame ? await readReference(directory, request.lastFrame, "image", signal) : undefined,
+        ratio: request.ratio, resolution: request.resolution, duration: request.duration,
+        generateAudio: request.generateAudio, mode: request.mode,
+      }));
+  } catch (err) {
+    await recordUsage(directory, {
+      ...usageBase, timestamp: Date.now(), success: false, durationMs: Date.now() - generationStart,
+      errorMessage: (err instanceof Error ? err.message : String(err)).slice(0, 300),
+    }).catch(() => {});
+    throw err;
+  }
   if (!Array.isArray(assets) || !assets.length) invalid("供应商未返回生成结果");
+  const { cost, balanceAfter } = mergeUsage(assets);
+  await recordUsage(directory, {
+    ...usageBase, timestamp: Date.now(), success: true, durationMs: Date.now() - generationStart,
+    outputCount: assets.length, ...(cost ? { cost } : {}), ...(balanceAfter ? { balanceAfter } : {}),
+  }).catch(() => {});
   const written: string[] = [];
   const result: GeneratedMedia[] = [];
   try {
